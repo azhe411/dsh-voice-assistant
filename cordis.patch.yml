@@ -1,0 +1,7 @@
+# dsh-voice-assistant bundle patch — GitHub 安装时注册插件入口
+# 方式 A（推荐）: node install.cjs（部署到 ~/.dsh + 装模型 + 注册 @local/voice-core）
+# 方式 B: dsh plugin --profile web add github:<you>/dsh-voice-assistant
+#         （本 patch 把插件本体注册为 dsh-voice-assistant，但模型/依赖仍需 install.cjs 或手动准备）
+- insert:
+    - id: voice-core
+      name: dsh-voice-assistant

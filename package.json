@@ -1,0 +1,29 @@
+{
+  "name": "dsh-voice-assistant",
+  "version": "1.0.0",
+  "description": "DSH 语音助手插件：本地流式语音识别（sherpa）+ 语音指令注入 + 语音朗读回复（vits-zh-ll）+ 天气查询",
+  "type": "module",
+  "main": "src/voice-core.js",
+  "exports": {
+    ".": "./src/voice-core.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "scripts",
+    "assets",
+    "install.cjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "license": "MIT"
+}
