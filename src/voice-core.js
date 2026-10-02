@@ -202,29 +202,44 @@ export function apply(ctx) {
           try {
             // 每条语音指令都开一个独立新会话（不注入当前聊天会话）
             const existing = agents.list();
+            diag('注入诊断: agents.list 数量=', existing.length, 'ids=', existing.map((a) => a.id).slice(0, 10).join(','));
             // 以「非语音」的主会话为继承源（语音会话自身无完整工具，不能作为父）
             const lastAgent = [...existing].reverse().find((a) => a && !String(a.id || '').startsWith('voice-'))
               || existing[existing.length - 1];
             const meta = {};
-            // {{cwd}} 变量取自 session.header.cwd，必须继承当前会话的工作目录
-            const cwd = lastAgent && lastAgent.session && lastAgent.session.header && lastAgent.session.header.cwd;
+            // {{cwd}} 变量取自 session.header.cwd；拿不到时兜底用工作区根
+            const cwd = (lastAgent && lastAgent.session && lastAgent.session.header && lastAgent.session.header.cwd)
+              || (ctx.get && ctx.get('sandboxPolicy') && ctx.get('sandboxPolicy').workspaceRoot);
             if (cwd) meta.cwd = cwd;
             // 继承当前会话的 agent 预设（决定工具集/权限/人设），否则新会话是受限默认预设（无本地终端）
             const agentPreset = lastAgent && lastAgent.session && lastAgent.session.header && lastAgent.session.header.agentPreset;
             if (agentPreset) meta.agentPreset = agentPreset;
             const sessionId = 'voice-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
             const parentCtx = lastAgent && lastAgent.ctx;
-            diag('注入: 指令=', cmd.slice(0, 30), '| 父会话=', lastAgent ? lastAgent.id : '(无)', '| sessionId=', sessionId);
+            // 模型：主会话 options 优先，否则用部署默认模型（避免 {{model}} 无值）
+            let agentOpts;
+            if (lastAgent && lastAgent.options && (lastAgent.options.model || lastAgent.options.provider)) {
+              agentOpts = { provider: lastAgent.options.provider, model: lastAgent.options.model };
+            } else {
+              const def = ctx.get && ctx.get('agentDefaultModel') && ctx.get('agentDefaultModel').currentSelection();
+              if (def) agentOpts = { provider: def.provider, model: def.model };
+            }
+            diag('注入: 指令=', cmd.slice(0, 30), '| 父会话=', lastAgent ? lastAgent.id : '(无)', '| sessionId=', sessionId, '| model=', agentOpts && agentOpts.model);
             const handle = await agents.create({
               sessionId,
               meta,
-              // 继承当前会话的模型配置，否则 persona 的 {{model}} 变量无值导致运行失败
-              agentOptions: lastAgent && lastAgent.options
-                ? { provider: lastAgent.options.provider, model: lastAgent.options.model }
-                : undefined,
-              // 继承主会话的预设组合（工具集/prompt），否则新会话只有受限默认工具
-              setup: (agentCtx) => {
-                if (parentCtx) agentCtx.get('agentPresets')?.composeFrom(agentCtx, parentCtx);
+              agentOptions: agentOpts,
+              setup: async (agentCtx) => {
+                // 继承主会话组合；无父会话时挂载部署默认预设（保证工具集）
+                if (parentCtx) {
+                  agentCtx.get('agentPresets')?.composeFrom(agentCtx, parentCtx);
+                } else {
+                  const presets = agentCtx.get('agentPresets');
+                  if (presets) {
+                    const def = presets.resolve();
+                    if (def && def.id) await presets.mount(agentCtx, def.id);
+                  }
+                }
               },
             });
             const msg = {
